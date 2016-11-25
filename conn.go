@@ -1,20 +1,18 @@
 package rtmp
 
 import (
-  "net"
+	"context"
+	"net"
 )
 
-type Conn struct {
-  TCPConn *net.TCPConn
+type conn struct {
+	server *Server
+	rwc    net.Conn
 }
 
-func NewConn(tcpConn *net.TCPConn) (*Conn, error) {
-  conn := &Conn{
-    TCPConn: tcpConn,
-  }
-  return conn, nil
+func (c *conn) handshake() error {
+	return nil
 }
 
-func (c *Conn) Handshake() error {
-  
+func (c *conn) serve(ctx context.Context) {
 }

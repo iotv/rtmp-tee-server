@@ -42,6 +42,9 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 type Server struct {
 	Addr    string
 	Handler Handler
+
+  ReadTimeout time.Duration
+  WriteTimeout time.Duration
 }
 
 type Handler interface {

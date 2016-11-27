@@ -94,20 +94,26 @@ func (c *conn) handshake(ctx context.Context) error {
     return fmt.Errorf("rtmp: handshake C1 read failed: %s", err.Error())
   }
 
-  // S2
-  // Write s2 client timestamp
-  if s2CTSLen, err := c.bufw.Write(c1[:4]); s2CTSLen != 4 || err != nil {
-    return fmt.Errorf("rtmp: handshake S2 client timestamp write failed: %s", err.Error())
-  }
-  // Write s2 server timestamp
-  s2STimestamp := make([]byte, 4)
-  binary.BigEndian.PutUint32(s2STimestamp, getUint32MilsTimestamp())
-  if s2STSLen, err := c.bufw.Write(s2STimestamp); s2STSLen != 4 || err != nil {
-    return fmt.Errorf("rtmp: handshake S2 server timestamp write failed: %s", err.Error())
-  }
-  // Write s2 ack client random
-  if s2RandLen, err := c.bufw.Write(c1[8:]); s2RandLen != 1528 || err != nil {
-    return fmt.Errorf("rtmp: handshake S2 acknowledge client random write failed: %s", err.Error())
+  // TODO: figure out what to do with this.
+  // OBS thinks this is incorrect. The RTMP spec says it's correct.
+  // // S2
+  // // Write s2 client timestamp
+  // if s2CTSLen, err := c.bufw.Write(c1[:4]); s2CTSLen != 4 || err != nil {
+  //   return fmt.Errorf("rtmp: handshake S2 client timestamp write failed: %s", err.Error())
+  // }
+  // // Write s2 server timestamp
+  // s2STimestamp := make([]byte, 4)
+  // binary.BigEndian.PutUint32(s2STimestamp, getUint32MilsTimestamp())
+  // if s2STSLen, err := c.bufw.Write(s2STimestamp); s2STSLen != 4 || err != nil {
+  //   return fmt.Errorf("rtmp: handshake S2 server timestamp write failed: %s", err.Error())
+  // }
+  // // Write s2 ack client random
+  // if s2RandLen, err := c.bufw.Write(c1[8:]); s2RandLen != 1528 || err != nil {
+  //   return fmt.Errorf("rtmp: handshake S2 acknowledge client random write failed: %s", err.Error())
+  // }
+  // FIXME: this is wrong. Obs likes it, but it's wrong.
+  if s2, err := c.bufw.Write(c1); s2 != 1536 || err!= nil {
+    return fmt.Errorf("rtmp: handshake s2 write failed: %s", err.Error())
   }
   // Flush s2 to network
   if err := c.bufw.Flush(); err != nil {
@@ -185,7 +191,72 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
     fmt.Printf("msgLen: %v\n", msgLen)
     fmt.Printf("msgTypeId: %v\n", msgTypeId)
     fmt.Printf("msgStreamId: %v\n", msgStreamId)
+
+    // LOUD
     fmt.Printf("message: %v\n", message)
+
+    switch msgTypeId[0] {
+    case 20: // AMF0 command message
+      // // write a window size acknowledgement chunk
+      // c.bufw.Write([]byte{2}) // Chunk basic header indicating low level control
+      // // type 0 chunk response
+      // c.bufw.Write([]byte{0, 0, 0}) // empty timestamp
+      // c.bufw.Write([]byte{0, 0, 4}) // message length 4
+      // c.bufw.Write([]byte{5}) //set messagetype id = 5; window ack size
+      // c.bufw.Write([]byte{0, 0, 0, 0}) // control message stream id = 0
+      // c.bufw.Write([]byte{0, 0, 250, 0})
+      // c.bufw.Flush()
+      //
+      // // set bandwidth
+      // c.bufw.Write([]byte{2}) // Chunk basic header for low level control
+      // c.bufw.Write([]byte{0, 0, 0}) // empty timestamp
+      // c.bufw.Write([]byte{0, 0, 5}) // message length 4
+      // c.bufw.Write([]byte{6}) // msg type id = 6; set peer bw
+      // c.bufw.Write([]byte{0, 0, 0, 0}) // control message stream id = 0
+      // c.bufw.Write([]byte{0, 5, 0, 0, 0})
+      // c.bufw.Flush()
+      //
+      // // write this terrible rtmp start stream thing
+      // c.bufw.Write([]byte{2})
+      // c.bufw.Write([]byte{0, 0, 0})
+      // c.bufw.Write([]byte{0, 0, 17}) //message length
+      // c.bufw.Write([]byte{4}) // user control message
+      // c.bufw.Write([]byte{0, 0, 0, 0}) // control message stream id = 0
+      // c.bufw.Write([]byte{4}) // rtmp message type???
+      // c.bufw.Write([]byte{0, 0, 6}) // payload length
+      // whocares := make([]byte, 4)
+      // binary.BigEndian.PutUint32(whocares, getUint32MilsTimestamp())
+      // c.bufw.Write(whocares)
+      // c.bufw.Write([]byte{0, 0, 0}) // stream id 0?
+      // c.bufw.Write([]byte{0, 0, 0, 0, 0, 0}) // ?? Stream begin. Stream 0?
+      // c.bufw.Flush()
+
+      // write a user result amf0
+      c.bufw.Write([]byte{2}) // chunk id
+      c.bufw.Write([]byte{0, 0, 0}) // empty timestamp
+      c.bufw.Write([]byte{0, 0, 81}) // message length
+      c.bufw.Write([]byte{20}) // AMF0 message!
+      c.bufw.Write([]byte{0, 0, 0, 0}) // control msg stream id
+      c.bufw.Write([]byte{2, 0, 7, 95, 114, 101, 115, 117, 108, 116}) // string "_result"
+      c.bufw.Write([]byte{0, 63, 240, 0, 0, 0, 0, 0, 0}) // number: 1.0 i guess?
+      c.bufw.Write([]byte{3}) // object marker for properties
+      c.bufw.Write([]byte{0, 0, 9}) // object end marker for properties
+      c.bufw.Write([]byte{3}) // object marker for information
+      c.bufw.Write([]byte{0, 5, 108, 101, 118, 101, 108, 2, 0, 6, 115, 116, 97, 116, 117, 115 }) // level: "status" k/v
+      c.bufw.Write([]byte{
+        0, 4, 99, 111, 100,
+        101, 2, 0, 29, 78,
+        101, 116, 67, 111,
+        110, 110, 101, 99,
+        116, 105, 111, 110,
+        46, 67, 111, 110,
+        110, 101, 99, 116,
+        46, 83, 117, 99, 99,
+        101, 115, 115}) // "code: "NetConnection.Connect.Success"
+      c.bufw.Write([]byte{0, 0, 9}) // object end marker for information
+      c.bufw.Flush()
+      fmt.Println("Wrote amf0 back")
+    }
   case 1:
     timestampDelta := make([]byte, 3)
     msgLen := make([]byte, 3)
@@ -227,10 +298,14 @@ func (c *conn) serve(ctx context.Context) {
     if c.handshake(ctx) != nil {
       c.rwc.Close()
     }
+    i := 0
     for {
       if _, err := c.receiveChunk(ctx); err != nil {
-        c.rwc.Close()
-        break
+        if i > 2 {
+          c.rwc.Close()
+          break
+        }
+        i += 1
       }
     }
 }

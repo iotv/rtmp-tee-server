@@ -11,6 +11,10 @@ import (
   "sync"
 )
 
+type chunk struct {
+
+}
+
 type conn struct {
 	server *Server
 	rwc    net.Conn
@@ -22,7 +26,32 @@ type conn struct {
 }
 
 
-func (c *conn) handshake() error {
+// handshake will perform the RTMP handshake to establish the connection.
+// handshake is currently written in the context of a server listening to a
+// client, however the handshake works both directions and this code should
+// work for clients as well (where S0, S1, S2 are contextually C0, C1, C2)
+// respectively.
+// The RTMP handshake can be broken down as follows:
+// S0 -> [version: 1 byte]       (only 3 is accepted at this time)
+// S1 -> [timestamp: 4 bytes]    (epoch timestamp in milliseconds)
+//       [zeroes: 4 bytes]       (zeroes for padding)
+//       [random: 1528 bytes]    (random bytes)
+// <- C0 [version: 1 byte]       (only 3 is accepeted at this time)
+// <- C1 [timestamp: 4 bytes]    (epoch timestamp in milliseconds)
+//       [zeroes: 4 bytes]       (zeroes for padding)
+//       [random: 1528]          (random bytes)
+// <Wait> The client and server packets must be in their own order, but their
+//        order is idependent so S1 may arrive before C1 is sent or vice versa
+// S2 -> [C1 timestamp: 4 bytes] (an echo of the timestamp sent in C1)
+//       [timestamp: 4 bytes]    (the epoch timestamp C1 recieved at)
+//       [C1 random: 1528 bytes] (an echo of the random sent in C1)
+// <- C2 [S1 timestamp: 4 bytes] (an echo of the timestamp send in S1)
+//       [timestamp: 4 bytes]    (the epoch timestamp S1 recieved at)
+//       [S1 random: 1528 bytes] (an echo of the random sent in S1)
+// <end> The order of S2 and C2 is also independent but must happen after the
+// exchange of C1 and S1. Note that the behavior is reflected, so once the
+// TCP dial and accept occurs, the handshake is the same for server and client
+func (c *conn) handshake(ctx context.Context) error {
   // FIXME: set timeouts
   // FIXME: use pools for byte slices
 
@@ -100,11 +129,108 @@ func (c *conn) handshake() error {
   return nil
 }
 
+func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
+  // FIXME: set timeouts
+  // FIXME: use pools for byte slices
+
+  // Chunk Basic Header
+  basicHeaderType, _ := c.bufr.Peek(1)
+  var basicHeaderLen int
+  switch basicHeaderType[0] &^ 0xC0 { // Remove fmt
+  case 0: // 2 byte streamId
+    basicHeaderLen = 2
+  case 1:
+    basicHeaderLen = 3
+  default:
+    basicHeaderLen = 1
+  }
+
+  basicHeader := make([]byte, basicHeaderLen)
+  bHPadding := make([]byte, 4 - basicHeaderLen)
+
+  // Read basic header for the chunk
+  if bHLen, err := c.bufr.Read(basicHeader); bHLen != basicHeaderLen || err != nil {
+    return nil, fmt.Errorf("rtmp: read chunk basic header failed: %s", err.Error())
+  }
+  chunkHeaderFormat := (basicHeader[0] & 0xC0) >> 6// read fmt from first 2 bits and move them to LSBs
+  basicHeader[0] = basicHeader[0] &^ 0xC0 // remove fmt from first 2 bits
+  streamId := binary.BigEndian.Uint32(append(bHPadding, basicHeader...))
+  switch basicHeaderLen {
+  case 2, 3:
+    streamId += 64 // 2 and 3 byte headers exclude IDs 2-63. It's ghetto. It's RTMP.
+  }
+  fmt.Printf("basicHeaderType: %v\n", basicHeaderType)
+  fmt.Printf("chunkHeaderFormat: %v\n", chunkHeaderFormat)
+  fmt.Printf("streamId: %v\n", streamId)
+
+
+  // Chunk Message header
+  switch chunkHeaderFormat {
+  case 0:
+    // Type 0 Chunk Headers are 11 bytes long
+    timestamp := make([]byte, 3)
+    msgLen := make([]byte, 3)
+    msgTypeId := make([]byte, 1)
+    msgStreamId := make([]byte, 4)
+    c.bufr.Read(timestamp)
+    c.bufr.Read(msgLen)
+    c.bufr.Read(msgTypeId)
+    c.bufr.Read(msgStreamId)
+
+    // FIXME: do not allocate memory based on what a network peer says, have a limit set on server
+    message := make([]byte, binary.BigEndian.Uint32(append([]byte{0}, msgLen...)))
+    c.bufr.Read(message)
+
+    fmt.Printf("timestamp: %v\n", timestamp)
+    fmt.Printf("msgLen: %v\n", msgLen)
+    fmt.Printf("msgTypeId: %v\n", msgTypeId)
+    fmt.Printf("msgStreamId: %v\n", msgStreamId)
+    fmt.Printf("message: %v\n", message)
+  case 1:
+    timestampDelta := make([]byte, 3)
+    msgLen := make([]byte, 3)
+    msgTypeId := make([]byte, 3)
+    c.bufr.Read(timestampDelta)
+    c.bufr.Read(msgLen)
+    c.bufr.Read(msgTypeId)
+
+    // FIXME: do not allocate memory based on what a network peer says, have a limit set on server
+    message := make([]byte, binary.BigEndian.Uint32(append([]byte{0}, msgLen...)))
+    c.bufr.Read(message)
+
+    fmt.Printf("timestamp: %v\n", timestampDelta)
+    fmt.Printf("msgLen: %v\n", msgLen)
+    fmt.Printf("msgTypeId: %v\n", msgTypeId)
+    fmt.Printf("message: %v\n", message)
+  case 2:
+    timestampDelta := make([]byte, 3)
+    fmt.Printf("timestamp: %v\n", timestampDelta)
+  default: // should only be 3, as this is masked from 2 bits so 0-3 is exhaustive
+    fmt.Println("nothing to see here.")
+  }
+
+  return nil, fmt.Errorf("rtmp: recieve chunk not implemented")
+}
+
+
+// serve will serve a connection with RTMP.
+// It handles handshakes, control messages and dispatches RTMP server handlers
+// based on incoming chunks. It also manages the lifecycle of the
+// RTMP connection.
 func (c *conn) serve(ctx context.Context) {
     c.bufr = bufio.NewReader(c.rwc) // TODO: add size here? // TODO: make a sync pool
     c.bufw = bufio.NewWriter(c.rwc) // TODO: add size here? // TODO: make a sync pool
-    c.handshake()
-    for {
 
+    ctx, cancelCtx := context.WithCancel(ctx)
+    defer cancelCtx()
+
+    if c.handshake(ctx) != nil {
+      c.rwc.Close()
+    }
+    for {
+      if _, err := c.receiveChunk(ctx); err != nil {
+        c.rwc.Close()
+        break
+      }
     }
 }

@@ -139,6 +139,8 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
   // FIXME: set timeouts
   // FIXME: use pools for byte slices
 
+  fmt.Println("-----")
+
   // Chunk Basic Header
   basicHeaderType, _ := c.bufr.Peek(1)
   var basicHeaderLen int
@@ -193,7 +195,7 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
     fmt.Printf("msgStreamId: %v\n", msgStreamId)
 
     // LOUD
-    fmt.Printf("message: %v\n", message)
+    //fmt.Printf("message: %v\n", message)
 
     switch msgTypeId[0] {
     case 20: // AMF0 command message
@@ -260,7 +262,7 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
   case 1:
     timestampDelta := make([]byte, 3)
     msgLen := make([]byte, 3)
-    msgTypeId := make([]byte, 3)
+    msgTypeId := make([]byte, 1)
     c.bufr.Read(timestampDelta)
     c.bufr.Read(msgLen)
     c.bufr.Read(msgTypeId)
@@ -298,14 +300,14 @@ func (c *conn) serve(ctx context.Context) {
     if c.handshake(ctx) != nil {
       c.rwc.Close()
     }
-    i := 0
+    //i := 0
     for {
       if _, err := c.receiveChunk(ctx); err != nil {
-        if i > 2 {
-          c.rwc.Close()
-          break
-        }
-        i += 1
+        //if i > 2 {
+          //c.rwc.Close()
+        //  break
+        //}
+        //i += 1
       }
     }
 }

@@ -234,29 +234,7 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
       // c.bufw.Flush()
 
       // write a user result amf0
-      c.bufw.Write([]byte{2}) // chunk id
-      c.bufw.Write([]byte{0, 0, 0}) // empty timestamp
-      c.bufw.Write([]byte{0, 0, 81}) // message length
-      c.bufw.Write([]byte{20}) // AMF0 message!
-      c.bufw.Write([]byte{0, 0, 0, 0}) // control msg stream id
-      c.bufw.Write([]byte{2, 0, 7, 95, 114, 101, 115, 117, 108, 116}) // string "_result"
-      c.bufw.Write([]byte{0, 63, 240, 0, 0, 0, 0, 0, 0}) // number: 1.0 i guess?
-      c.bufw.Write([]byte{3}) // object marker for properties
-      c.bufw.Write([]byte{0, 0, 9}) // object end marker for properties
-      c.bufw.Write([]byte{3}) // object marker for information
-      c.bufw.Write([]byte{0, 5, 108, 101, 118, 101, 108, 2, 0, 6, 115, 116, 97, 116, 117, 115 }) // level: "status" k/v
-      c.bufw.Write([]byte{
-        0, 4, 99, 111, 100,
-        101, 2, 0, 29, 78,
-        101, 116, 67, 111,
-        110, 110, 101, 99,
-        116, 105, 111, 110,
-        46, 67, 111, 110,
-        110, 101, 99, 116,
-        46, 83, 117, 99, 99,
-        101, 115, 115}) // "code: "NetConnection.Connect.Success"
-      c.bufw.Write([]byte{0, 0, 9}) // object end marker for information
-      c.bufw.Flush()
+      c.writeAMF0NetConnectionConnectSuccess()
       fmt.Println("Wrote amf0 back")
     }
   case 1:
@@ -283,6 +261,42 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
   }
 
   return nil, fmt.Errorf("rtmp: recieve chunk not implemented")
+}
+
+
+func (c *conn) writeChunkBasicHeader() error {
+  return nil
+}
+
+func (c *conn) writeChunkMessageHeader() error {
+  return nil
+}
+
+func (c *conn) writeAMF0NetConnectionConnectSuccess() error {
+  c.bufw.Write([]byte{2}) // chunk id
+  c.bufw.Write([]byte{0, 0, 0}) // empty timestamp
+  c.bufw.Write([]byte{0, 0, 81}) // message length
+  c.bufw.Write([]byte{20}) // AMF0 message!
+  c.bufw.Write([]byte{0, 0, 0, 0}) // control msg stream id
+  c.bufw.Write([]byte{2, 0, 7, 95, 114, 101, 115, 117, 108, 116}) // string "_result"
+  c.bufw.Write([]byte{0, 63, 240, 0, 0, 0, 0, 0, 0}) // number: 1.0 i guess?
+  c.bufw.Write([]byte{3}) // object marker for properties
+  c.bufw.Write([]byte{0, 0, 9}) // object end marker for properties
+  c.bufw.Write([]byte{3}) // object marker for information
+  c.bufw.Write([]byte{0, 5, 108, 101, 118, 101, 108, 2, 0, 6, 115, 116, 97, 116, 117, 115 }) // level: "status" k/v
+  c.bufw.Write([]byte{
+    0, 4, 99, 111, 100,
+    101, 2, 0, 29, 78,
+    101, 116, 67, 111,
+    110, 110, 101, 99,
+    116, 105, 111, 110,
+    46, 67, 111, 110,
+    110, 101, 99, 116,
+    46, 83, 117, 99, 99,
+    101, 115, 115}) // "code: "NetConnection.Connect.Success"
+  c.bufw.Write([]byte{0, 0, 9}) // object end marker for information
+  c.bufw.Flush()
+  return nil
 }
 
 

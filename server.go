@@ -43,8 +43,8 @@ type Server struct {
 	Addr    string
 	Handler Handler
 
-  ReadTimeout time.Duration
-  WriteTimeout time.Duration
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
 }
 
 type Handler interface {

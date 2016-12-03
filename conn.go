@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -229,8 +230,7 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 // FIXME: parameterize variables
 func (c *conn) writeWindowSizeAcknowledgementChunk() error {
 	// write a window size acknowledgement chunk
-	c.bufw.Write([]byte{2}) // Chunk basic header indicating low level control
-	// type 0 chunk response
+	c.writeChunkBasicHeader(0, 2)
 	c.bufw.Write([]byte{0, 0, 0})    // empty timestamp
 	c.bufw.Write([]byte{0, 0, 4})    // message length 4
 	c.bufw.Write([]byte{5})          //set messagetype id = 5; window ack size
@@ -243,7 +243,7 @@ func (c *conn) writeWindowSizeAcknowledgementChunk() error {
 // FIXME: parameterize variables
 func (c *conn) writeSetPeerBandwidthChunk() error {
 	// set bandwidth
-	c.bufw.Write([]byte{2})          // Chunk basic header for low level control
+	c.writeChunkBasicHeader(0, 2)
 	c.bufw.Write([]byte{0, 0, 0})    // empty timestamp
 	c.bufw.Write([]byte{0, 0, 5})    // message length 4
 	c.bufw.Write([]byte{6})          // msg type id = 6; set peer bw
@@ -256,7 +256,7 @@ func (c *conn) writeSetPeerBandwidthChunk() error {
 // FIXME: figure out if this is even needed. extract parameters
 func (c *conn) writeRTMPStartStreamMessage() error {
 	// write this terrible rtmp start stream thing
-	c.bufw.Write([]byte{2})
+	c.writeChunkBasicHeader(0, 2)
 	c.bufw.Write([]byte{0, 0, 0})
 	c.bufw.Write([]byte{0, 0, 17})   //message length
 	c.bufw.Write([]byte{4})          // user control message
@@ -272,39 +272,54 @@ func (c *conn) writeRTMPStartStreamMessage() error {
 	return nil
 }
 
-func (c *conn) writeChunkBasicHeader(fmt, csId uint) error {
-	if fmt > 3 {
+// writeChunkBasicHeader writes the first bytes of a chunk which is the
+// chunk basic header. The chunk basic header identifies the chunk stream id
+// and the following message format. A chunk basic header has a length based
+// on the chunk stream id.
+// In the RTMP spec the parameters map as follow:
+//    format => fmt (this is a libary used here)
+//    chunkStreamId => cs id
+func (c *conn) writeChunkBasicHeader(format uint8, chunkStreamId uint32) error {
+	if format > 3 {
 		return errors.New("rtmp: failed to write chunk basic header: format larger than 2 bits.")
 	}
-	if csId > 65599 {
+	if chunkStreamId > 65599 {
 		return errors.New("rtmp: failed to write chunk basic header: chunk stream id greater than max.")
-	} else if csId < 3 {
+	} else if chunkStreamId < 3 {
 		return errors.New("rtmp: failed to write chunk basic header: chunk stream id less than min.")
 	}
 
 	// Set fmt bits to first 2 bits of MSB
 	fmtBits := byte(0)
-	switch fmt {
+	switch format {
 	case 1:
 		fmtBits = 0x40
 	case 2:
 		fmtBits = 0x80
 	case 3:
 		fmtBits = 0xC0
-	default:
-		return fmt.Errof("rtmp: failed to write chunk basic header: invalid fmt: %d.", fmt)
+	default: // This shouldn't be reachable
+		return fmt.Errorf("rtmp: failed to write chunk basic header: invalid fmt: %d.", format)
 	}
 
-	// Create byte representation of id
+	csBytes := make([]byte, 4)
+
+	// Write the byte representation of chunk stream header
 	switch {
-	case 3 < csId && csId < 64:
-		//
-	case 63 < csId && csId < 320:
-		//
-	case 319 < csId && csId < 65599:
-		//
-	default:
-		return fmt.Errorf("rtmp: failed to write chunk basic header: invalid id: %d.", csId)
+	case 3 < chunkStreamId && chunkStreamId < 64:
+		binary.BigEndian.PutUint32(csBytes, chunkStreamId)
+		csBytes[3] = (csBytes[3] &^ 0xC0) | fmtBits // clear bits then write fmtBits
+		c.bufw.Write(csBytes[3:4])                  // write only the least significant 1 byte
+	case 64 <= chunkStreamId && chunkStreamId < 320:
+		binary.BigEndian.PutUint32(csBytes, chunkStreamId-64)
+		csBytes[2] = (csBytes[2] &^ 0xC0) | fmtBits // clear bits then write fmtBits
+		c.bufw.Write(csBytes[2:4])                  // write only the least significant 2 bytes
+	case 320 <= chunkStreamId && chunkStreamId < 65599:
+		binary.BigEndian.PutUint32(csBytes, chunkStreamId-64)
+		csBytes[1] = (csBytes[1] &^ 0xC0) | fmtBits | 0x01 // clear bits then write fmtBits + 1 to signal 3 byte message
+		c.bufw.Write(csBytes[1:4])                         // write only the least significant 3 bytes
+	default: // This shouldn't be reachable
+		return fmt.Errorf("rtmp: failed to write chunk basic header: invalid id: %d.", chunkStreamId)
 	}
 
 	return nil
@@ -315,7 +330,7 @@ func (c *conn) writeChunkMessageHeader() error {
 }
 
 func (c *conn) writeAMF0NetConnectionConnectSuccess() error {
-	c.bufw.Write([]byte{2})                                                                   // chunk id
+	c.writeChunkBasicHeader(0, 2)
 	c.bufw.Write([]byte{0, 0, 0})                                                             // empty timestamp
 	c.bufw.Write([]byte{0, 0, 81})                                                            // message length
 	c.bufw.Write([]byte{20})                                                                  // AMF0 message!

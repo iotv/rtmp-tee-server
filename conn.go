@@ -25,18 +25,20 @@ type conn struct {
 	bufw *bufio.Writer
 
 	// Stateful information about the previous incoming message
-	prvIncMsgTime   time.Time // Actual time it came in
-	prvIncMsgTS     uint32    // Timestamp on the message
-	prvIncMsgLen    uint32    // Message length
-	prvIncMsgTypId  uint8     // Message type ID
-	prvIncMsgStrmId uint32    // Message stream ID
+	prvIncMsgTime   *time.Time // Actual time it came in
+	prvIncMsgTs     *uint32    // Timestamp on the message
+	prvIncMsgTsD    *uint32    // Timestamp delta
+	prvIncMsgLen    *uint32    // Message length
+	prvIncMsgTypId  *uint8     // Message type ID
+	prvIncMsgStrmId *uint32    // Message stream ID
 
 	// Stateful information about the previous outgoing message
-	prvOutgMsgTime   time.Time // Actual time it went out
-	prvOutgMsgTs     uint32    // Timestamp on the message
-	prvOutgMsgLen    uint32    // Message length
-	prvOutgMsgTypId  uint8     // Message type ID
-	prvOutgMsgStrmId uint32    // Message stream ID
+	prvOutgMsgTime   *time.Time // Actual time it went out
+	prvOutgMsgTs     *uint32    // Timestamp on the message
+	prvOutgMsgTsD    *uint32    // Timestamp delta
+	prvOutgMsgLen    *uint32    // Message length
+	prvOutgMsgTypId  *uint8     // Message type ID
+	prvOutgMsgStrmId *uint32    // Message stream ID
 
 	mu sync.Mutex
 }
@@ -158,6 +160,7 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 
 	// Chunk Basic Header
 	basicHeaderType, _ := c.bufr.Peek(1)
+	fmt.Printf("basicHeaderFirstByte: %v\n", basicHeaderType)
 	var basicHeaderLen int
 	switch basicHeaderType[0] &^ 0xC0 { // Remove fmt
 	case 0: // 2 byte streamId
@@ -182,65 +185,158 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 	case 2, 3:
 		streamId += 64 // 2 and 3 byte headers exclude IDs 2-63. It's ghetto. It's RTMP.
 	}
-	fmt.Printf("basicHeaderType: %v\n", basicHeaderType)
 	fmt.Printf("chunkHeaderFormat: %v\n", chunkHeaderFormat)
 	fmt.Printf("streamId: %v\n", streamId)
 
 	// Chunk Message header
 	switch chunkHeaderFormat {
 	case 0:
-		// Type 0 Chunk Headers are 11 bytes long
-		timestamp := make([]byte, 3)
-		msgLen := make([]byte, 3)
-		msgTypeId := make([]byte, 1)
-		msgStreamId := make([]byte, 4)
-		c.bufr.Read(timestamp)
-		c.bufr.Read(msgLen)
-		c.bufr.Read(msgTypeId)
-		c.bufr.Read(msgStreamId)
-
-		// FIXME: do not allocate memory based on what a network peer says, have a limit set on server
-		message := make([]byte, binary.BigEndian.Uint32(append([]byte{0}, msgLen...)))
-		c.bufr.Read(message)
-
-		fmt.Printf("timestamp: %v\n", timestamp)
-		fmt.Printf("msgLen: %v\n", msgLen)
-		fmt.Printf("msgTypeId: %v\n", msgTypeId)
-		fmt.Printf("msgStreamId: %v\n", msgStreamId)
-
-		// LOUD
-		//fmt.Printf("message: %v\n", message)
-
-		switch msgTypeId[0] {
-		case 20: // AMF0 command message
-			// write a user result amf0
-			c.writeAMF0NetConnectionConnectSuccess()
-			fmt.Println("Wrote amf0 back")
-		}
+		// FIXME: handle error
+		c.readType0MessageHeader()
 	case 1:
-		timestampDelta := make([]byte, 3)
-		msgLen := make([]byte, 3)
-		msgTypeId := make([]byte, 1)
-		c.bufr.Read(timestampDelta)
-		c.bufr.Read(msgLen)
-		c.bufr.Read(msgTypeId)
-
-		// FIXME: do not allocate memory based on what a network peer says, have a limit set on server
-		message := make([]byte, binary.BigEndian.Uint32(append([]byte{0}, msgLen...)))
-		c.bufr.Read(message)
-
-		fmt.Printf("timestamp: %v\n", timestampDelta)
-		fmt.Printf("msgLen: %v\n", msgLen)
-		fmt.Printf("msgTypeId: %v\n", msgTypeId)
-		fmt.Printf("message: %v\n", message)
+		// FIXME: handle error
+		c.readType1MessageHeader()
 	case 2:
-		timestampDelta := make([]byte, 3)
-		fmt.Printf("timestamp: %v\n", timestampDelta)
-	default: // should only be 3, as this is masked from 2 bits so 0-3 is exhaustive
-		fmt.Println("nothing to see here.")
+		// FIXME: handle error
+		c.readType2MessageHeader()
+	default: // implied type 3 header
+		// FIXME: handle error
+		c.verifyType3MessageHeader()
+	}
+
+	// TODO: remove diagnostic messages
+	fmt.Printf("timestamp: %v\n", *c.prvIncMsgTs)
+	fmt.Printf("msgLen: %v\n", *c.prvIncMsgLen)
+	fmt.Printf("msgTypeId: %v\n", *c.prvIncMsgTypId)
+	fmt.Printf("msgStreamId: %v\n", *c.prvIncMsgStrmId)
+
+	// FIXME: do not allocate memory based on a network peer's demands. set a limit and obey it
+	message := make([]byte, *c.prvIncMsgLen)
+	c.bufr.Read(message)
+	fmt.Printf("message: %v \n", message)
+
+	switch *c.prvIncMsgTypId {
+	case 20: // AMF0 command message
+		// write a user result amf0
+		c.writeAMF0NetConnectionConnectSuccess()
+		fmt.Println("Wrote amf0 back")
 	}
 
 	return nil, fmt.Errorf("rtmp: recieve chunk not implemented")
+}
+
+func (c *conn) readType0MessageHeader() error {
+	now := time.Now()
+
+	header := make([]byte, 11)
+	if hLen, err := c.bufr.Read(header); hLen != 11 || err != nil {
+		return fmt.Errorf("rtmp: read message header failed: %s", err.Error())
+	}
+
+	msgTs := binary.BigEndian.Uint32(append([]byte{0}, header[0:3]...))
+	// FIXME: handle extended timestamp
+
+	msgLen := binary.BigEndian.Uint32(append([]byte{0}, header[3:6]...))
+	msgTypId := uint8(header[6])
+	msgStrmId := binary.BigEndian.Uint32(header[7:])
+
+	c.prvIncMsgTime = &now
+	c.prvIncMsgTs = &msgTs
+	c.prvIncMsgLen = &msgLen
+	c.prvIncMsgTypId = &msgTypId
+	c.prvIncMsgStrmId = &msgStrmId
+
+	return nil
+}
+
+func (c *conn) readType1MessageHeader() error {
+	if c.prvIncMsgStrmId == nil {
+		return errors.New("rtmp: cannot read type 1 message header if no previous type 0 has been sent with stream id.")
+	}
+	if c.prvIncMsgTs == nil {
+		return errors.New("rtmp: cannot read type 1 message header if no previous type 0, has been sent with message timestamp.")
+	}
+
+	now := time.Now()
+
+	header := make([]byte, 7)
+	if hLen, err := c.bufr.Read(header); hLen != 7 || err != nil {
+		return fmt.Errorf("rtmp: read message header failed: %s", err.Error())
+	}
+
+	msgTsD := binary.BigEndian.Uint32(append([]byte{0}, header[0:3]...))
+	msgTs := (*c.prvIncMsgTs + msgTsD) % 0x01000000 // keep it to 3 bytes by rolling it
+	// FIXME: handle extended timestamp
+
+	msgLen := binary.BigEndian.Uint32(append([]byte{0}, header[3:6]...))
+	msgTypId := uint8(header[6])
+
+	c.prvIncMsgTime = &now
+	c.prvIncMsgTsD = &msgTsD
+	c.prvIncMsgTs = &msgTs
+	c.prvIncMsgLen = &msgLen
+	c.prvIncMsgTypId = &msgTypId
+
+	return nil
+}
+
+func (c *conn) readType2MessageHeader() error {
+	if c.prvIncMsgStrmId == nil {
+		return errors.New("rtmp: cannot read type 2 message header if no previous type 0 has been sent with stream id.")
+	}
+	if c.prvIncMsgTs == nil {
+		return errors.New("rtmp: cannot read type 2 message header if no previous type 0, has been sent with message timestamp.")
+	}
+	if c.prvIncMsgLen == nil {
+		return errors.New("rtmp: cannot read type 2 message header if no previous type 0,1 has been sent with message length.")
+	}
+	if c.prvIncMsgTypId == nil {
+		return errors.New("rtmp: cannot read type 2 message header if no previous type 0,1 has been sent with message type id.")
+	}
+
+	now := time.Now()
+
+	header := make([]byte, 3)
+	if hLen, err := c.bufr.Read(header); hLen != 3 || err != nil {
+		return fmt.Errorf("rtmp: read message header failed: %s", err.Error())
+	}
+
+	msgTsD := binary.BigEndian.Uint32(append([]byte{0}, header[0:3]...))
+	msgTs := (*c.prvIncMsgTs + msgTsD) % 0x01000000 // keep it to 3 bytes by rolling it
+	// FIXME: handle extended timestamp
+
+	c.prvIncMsgTime = &now
+	c.prvIncMsgTsD = &msgTsD
+	c.prvIncMsgTs = &msgTs
+
+	return nil
+}
+
+func (c *conn) verifyType3MessageHeader() error {
+	if c.prvIncMsgStrmId == nil {
+		return errors.New("rtmp: cannot read type 3 message header if no previous type 0 has been sent with stream id.")
+	}
+	if c.prvIncMsgTs == nil {
+		return errors.New("rtmp: cannot read type 3 message header if no previous type 0, has been sent with message timestamp.")
+	}
+	if c.prvIncMsgLen == nil {
+		return errors.New("rtmp: cannot read type 3 message header if no previous type 0,1 has been sent with message length.")
+	}
+	if c.prvIncMsgTypId == nil {
+		return errors.New("rtmp: cannot read type 3 message header if no previous type 0,1 has been sent with message type id.")
+	}
+	if c.prvIncMsgTsD == nil {
+		return errors.New("rtmp: cannot read type 3 message header if no previous type 1,2 has been sent with message timestamp delta.")
+	}
+
+	now := time.Now()
+
+	msgTs := (*c.prvIncMsgTs + *c.prvIncMsgTsD) % 0x01000000 // keep it to 3 bytes by rolling it
+
+	c.prvIncMsgTime = &now
+	c.prvIncMsgTs = &msgTs
+
+	return nil
 }
 
 // FIXME: parameterize variables
@@ -292,13 +388,15 @@ func (c *conn) writeChunkBasicHeader(format uint8, chunkStreamId uint32) error {
 	}
 	if chunkStreamId > 65599 {
 		return errors.New("rtmp: failed to write chunk basic header: chunk stream id greater than max.")
-	} else if chunkStreamId < 3 {
+	} else if chunkStreamId < 2 {
 		return errors.New("rtmp: failed to write chunk basic header: chunk stream id less than min.")
 	}
 
 	// Set fmt bits to first 2 bits of MSB
 	fmtBits := byte(0)
 	switch format {
+	case 0:
+		fmtBits = 0x00
 	case 1:
 		fmtBits = 0x40
 	case 2:
@@ -313,7 +411,7 @@ func (c *conn) writeChunkBasicHeader(format uint8, chunkStreamId uint32) error {
 
 	// Write the byte representation of chunk stream header
 	switch {
-	case 3 < chunkStreamId && chunkStreamId < 64:
+	case 2 <= chunkStreamId && chunkStreamId < 64:
 		binary.BigEndian.PutUint32(csBytes, chunkStreamId)
 		csBytes[3] = (csBytes[3] &^ 0xC0) | fmtBits // clear bits then write fmtBits
 		c.bufw.Write(csBytes[3:4])                  // write only the least significant 1 byte
@@ -412,7 +510,14 @@ func (c *conn) writeType3ChunkMessageHeader() error {
 
 func (c *conn) writeAMF0NetConnectionConnectSuccess() error {
 	c.writeChunkBasicHeader(0, 2)
-	c.writeType0ChunkMessageHeader(0, 81, 20, 0, 2)
+	//c.writeType0ChunkMessageHeader(0, 81, 20, 0, 2)
+
+	//c.bufw.Write([]byte{2})
+	c.bufw.Write([]byte{0, 0, 0})    // empty timestamp
+	c.bufw.Write([]byte{0, 0, 81})   // message length
+	c.bufw.Write([]byte{20})         // AMF0 message!
+	c.bufw.Write([]byte{0, 0, 0, 0}) // control msg stream id
+
 	c.bufw.Write([]byte{2, 0, 7, 95, 114, 101, 115, 117, 108, 116})                           // string "_result"
 	c.bufw.Write([]byte{0, 63, 240, 0, 0, 0, 0, 0, 0})                                        // number: 1.0 i guess?
 	c.bufw.Write([]byte{3})                                                                   // object marker for properties

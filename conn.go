@@ -189,19 +189,19 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 	fmt.Printf("streamId: %v\n", streamId)
 
 	// Chunk Message header
+	var err error
 	switch chunkHeaderFormat {
 	case 0:
-		// FIXME: handle error
-		c.readType0MessageHeader()
+		err = c.readType0MessageHeader()
 	case 1:
-		// FIXME: handle error
-		c.readType1MessageHeader()
+		err = c.readType1MessageHeader()
 	case 2:
-		// FIXME: handle error
-		c.readType2MessageHeader()
+		err = c.readType2MessageHeader()
 	default: // implied type 3 header
-		// FIXME: handle error
-		c.verifyType3MessageHeader()
+		err = c.verifyType3MessageHeader()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("rtmp: receive chunk failed: %s.", err.Error())
 	}
 
 	// TODO: remove diagnostic messages

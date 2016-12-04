@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 )
 
 type chunk struct {
@@ -19,8 +20,23 @@ type conn struct {
 	server *Server
 	rwc    net.Conn
 
+	// Input and output buffers on the connection
 	bufr *bufio.Reader
 	bufw *bufio.Writer
+
+	// Stateful information about the previous incoming message
+	prvIncMsgTime   time.Time // Actual time it came in
+	prvIncMsgTS     uint32    // Timestamp on the message
+	prvIncMsgLen    uint32    // Message length
+	prvIncMsgTypId  uint8     // Message type ID
+	prvIncMsgStrmId uint32    // Message stream ID
+
+	// Stateful information about the previous outgoing message
+	prvOutgMsgTime   time.Time // Actual time it went out
+	prvOutgMsgTs     uint32    // Timestamp on the message
+	prvOutgMsgLen    uint32    // Message length
+	prvOutgMsgTypId  uint8     // Message type ID
+	prvOutgMsgStrmId uint32    // Message stream ID
 
 	mu sync.Mutex
 }
@@ -231,10 +247,7 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 func (c *conn) writeWindowSizeAcknowledgementChunk() error {
 	// write a window size acknowledgement chunk
 	c.writeChunkBasicHeader(0, 2)
-	c.bufw.Write([]byte{0, 0, 0})    // empty timestamp
-	c.bufw.Write([]byte{0, 0, 4})    // message length 4
-	c.bufw.Write([]byte{5})          //set messagetype id = 5; window ack size
-	c.bufw.Write([]byte{0, 0, 0, 0}) // control message stream id = 0
+	c.writeType0ChunkMessageHeader(0, 4, 5, 0, 2)
 	c.bufw.Write([]byte{0, 0, 250, 0})
 	c.bufw.Flush()
 	return nil
@@ -244,10 +257,7 @@ func (c *conn) writeWindowSizeAcknowledgementChunk() error {
 func (c *conn) writeSetPeerBandwidthChunk() error {
 	// set bandwidth
 	c.writeChunkBasicHeader(0, 2)
-	c.bufw.Write([]byte{0, 0, 0})    // empty timestamp
-	c.bufw.Write([]byte{0, 0, 5})    // message length 4
-	c.bufw.Write([]byte{6})          // msg type id = 6; set peer bw
-	c.bufw.Write([]byte{0, 0, 0, 0}) // control message stream id = 0
+	c.writeType0ChunkMessageHeader(0, 5, 6, 0, 2)
 	c.bufw.Write([]byte{0, 5, 0, 0, 0})
 	c.bufw.Flush()
 	return nil
@@ -257,12 +267,9 @@ func (c *conn) writeSetPeerBandwidthChunk() error {
 func (c *conn) writeRTMPStartStreamMessage() error {
 	// write this terrible rtmp start stream thing
 	c.writeChunkBasicHeader(0, 2)
-	c.bufw.Write([]byte{0, 0, 0})
-	c.bufw.Write([]byte{0, 0, 17})   //message length
-	c.bufw.Write([]byte{4})          // user control message
-	c.bufw.Write([]byte{0, 0, 0, 0}) // control message stream id = 0
-	c.bufw.Write([]byte{4})          // rtmp message type???
-	c.bufw.Write([]byte{0, 0, 6})    // payload length
+	c.writeType0ChunkMessageHeader(0, 17, 4, 0, 2)
+	c.bufw.Write([]byte{4})       // rtmp message type???
+	c.bufw.Write([]byte{0, 0, 6}) // payload length
 	whocares := make([]byte, 4)
 	binary.BigEndian.PutUint32(whocares, getUint32MilsTimestamp())
 	c.bufw.Write(whocares)
@@ -329,12 +336,83 @@ func (c *conn) writeChunkMessageHeader() error {
 	return nil
 }
 
+func (c *conn) writeType0ChunkMessageHeader(ts uint, msgLen uint32, msgType uint8, msgStrmId, chunkStreamId uint32) error {
+	// TODO: see if this is legal without updating the client epoch
+	if ts > 0xFFFFFF { // Despite being > 4 bytes, it must fit in 3
+		ts = ts % 0x01000000 // roll the timestamp.
+	}
+
+	if msgLen > 0xFFFFFF { // Despite being 4 bytes, it must fit in 3
+		return fmt.Errorf("rtmp: failed to write type 0 chunk message header: message length too large: %d.", msgLen)
+	}
+
+	// TODO: maybe DGAF about this?
+	// Check if msgType is part of messages we know about
+	switch msgType {
+	case 1, 2, 3, 4, 5, 6:
+		// RTMP Spec says message stream id must be 0 for stream control messages
+		if msgStrmId != 0 {
+			fmt.Errorf("rtmp: failed to write type 0 chunk message header: message stream id must be 0 but was: %d.", msgStrmId)
+		}
+
+		// RTMP Spec says chunk stream id must be 2 for stream control messages
+		// FIXME: it's a little late to catch this error... might need to fix where
+		// we check this or recover by finishing writing a blank message
+		if chunkStreamId != 2 {
+			fmt.Errorf("rtmp: failed to write type 0 chunk message header: chunk stream id must be 2 but was: %d.", chunkStreamId)
+		}
+	case 8, 9, 15, 16, 17, 18, 19, 20, 22:
+		// we recognize this. ensure the chunk stream id isn't the control stream or weird
+		// chunk stream id 0 and 1 are formatting reserved.
+		// FIXME: it's a little late to catch this error... might need to fix where
+		// we check this or recover by finishing writing a blank message
+		if chunkStreamId < 2 {
+			fmt.Errorf("rtmp: failed to write type 0 chunk message header: Invalid chunk stream id: %d.", chunkStreamId)
+		} else if chunkStreamId == 2 { // 2 is reserved for types 1-6
+			fmt.Errorf("rtmp: failed to write type 0 chunk message header: chunk stream id 2 is reserved for protocol control.")
+		}
+		// It all looks good. do nothing
+	default:
+		return fmt.Errorf("rtmp: failed to write type 0 chunk message header: msgType not recognized: %d.", msgType)
+	}
+
+	// TODO: get some pooling going
+	tsBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(tsBytes, uint32(ts)) // we modulo'd above so truncate should have no effect
+
+	msgLenBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(msgLenBytes, msgLen)
+
+	msgStrmIdBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(msgStrmIdBytes, msgStrmId)
+
+	// TODO: is this the best I can do?
+	messageHeader := append([]byte{}, tsBytes[1:]...)
+	messageHeader = append(messageHeader, msgLenBytes[1:]...)
+	messageHeader = append(messageHeader, byte(msgType))
+	messageHeader = append(messageHeader, msgStrmIdBytes...)
+
+	if mHLen, err := c.bufw.Write(messageHeader); mHLen != 11 || err != nil {
+		return fmt.Errorf("rtmp: failed to write type 0 chunk message header: %s", err.Error())
+	}
+	return nil
+}
+
+func (c *conn) writeType1ChunkMessageHeader() error {
+	return nil
+}
+
+func (c *conn) writeType2ChunkMessageHeader() error {
+	return nil
+}
+
+func (c *conn) writeType3ChunkMessageHeader() error {
+	return nil
+}
+
 func (c *conn) writeAMF0NetConnectionConnectSuccess() error {
 	c.writeChunkBasicHeader(0, 2)
-	c.bufw.Write([]byte{0, 0, 0})                                                             // empty timestamp
-	c.bufw.Write([]byte{0, 0, 81})                                                            // message length
-	c.bufw.Write([]byte{20})                                                                  // AMF0 message!
-	c.bufw.Write([]byte{0, 0, 0, 0})                                                          // control msg stream id
+	c.writeType0ChunkMessageHeader(0, 81, 20, 0, 2)
 	c.bufw.Write([]byte{2, 0, 7, 95, 114, 101, 115, 117, 108, 116})                           // string "_result"
 	c.bufw.Write([]byte{0, 63, 240, 0, 0, 0, 0, 0, 0})                                        // number: 1.0 i guess?
 	c.bufw.Write([]byte{3})                                                                   // object marker for properties

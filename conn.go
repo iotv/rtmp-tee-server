@@ -213,7 +213,6 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 	// FIXME: do not allocate memory based on a network peer's demands. set a limit and obey it
 	message := make([]byte, *c.prvIncMsgLen)
 	c.bufr.Read(message)
-	fmt.Printf("message: %v\n", message)
 
 	switch *c.prvIncMsgTypId {
 	case 20: // AMF0 command message
@@ -225,6 +224,8 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 		}
 		c.writeAMF0NetConnectionConnectSuccess()
 		fmt.Println("Wrote amf0 back")
+	default:
+		fmt.Printf("message: %v\n", message)
 	}
 
 	return nil, fmt.Errorf("rtmp: recieve chunk not implemented")

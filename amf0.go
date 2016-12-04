@@ -83,12 +83,12 @@ func readAMF0Object(b []byte) (int, AMF0Object, error) {
 		if (i + 3) > msgLen {
 			return 0, nil, errors.New("rtmp: AMF0: message object does not have enough bytes for key size.")
 		}
-		if kSz := binary.BigEndian.Uint16(b[i+1 : i+3]); kSz != 0 {
+		if kSz := binary.BigEndian.Uint16(b[i : i+2]); kSz != 0 {
 			if (i + 2 + int(kSz)) > msgLen {
 				return i, nil, errors.New("rtmp: AMF0: message object does not have enough bytes for key.")
 			}
-			k := string(b[i+3 : i+3+int(kSz)])
-			i = i + 2 + int(kSz) + 1
+			k := string(b[i+2 : i+2+int(kSz)])
+			i = i + 2 + int(kSz)
 			if i > msgLen {
 				return 0, nil, errors.New("rtmp: AMF0: message object does not have enough bytes for key type.")
 			}
@@ -97,7 +97,7 @@ func readAMF0Object(b []byte) (int, AMF0Object, error) {
 				if (i + 8) > msgLen {
 					return i, nil, errors.New("rtmp: AMF0: number marker found without enough bytes for number.")
 				}
-				num, err := readAMF0Number(b[i+1 : i+8])
+				num, err := readAMF0Number(b[i+1 : i+9])
 				if err != nil {
 					return i, nil, err
 				}
@@ -137,7 +137,7 @@ func readAMF0Object(b []byte) (int, AMF0Object, error) {
 				return i, nil, fmt.Errorf("rtmp: AMF0: unimplemented obj marker found: %v", b[i])
 			}
 		} else { // null key sigil
-			if b[i+3] == 0x09 { // object end sigil
+			if b[i+2] == 0x09 { // object end sigil
 				i += 3
 				return i, ret, nil
 			}

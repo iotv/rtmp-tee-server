@@ -213,11 +213,16 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 	// FIXME: do not allocate memory based on a network peer's demands. set a limit and obey it
 	message := make([]byte, *c.prvIncMsgLen)
 	c.bufr.Read(message)
-	fmt.Printf("message: %v \n", message)
+	fmt.Printf("message: %v\n", message)
 
 	switch *c.prvIncMsgTypId {
 	case 20: // AMF0 command message
 		// write a user result amf0
+		if amf0, err := readAMF0Message(message); err != nil {
+			fmt.Printf("Error Reading AMF0 message: %s\n", err.Error())
+		} else {
+			fmt.Printf("amf0: %v\n", amf0)
+		}
 		c.writeAMF0NetConnectionConnectSuccess()
 		fmt.Println("Wrote amf0 back")
 	}

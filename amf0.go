@@ -10,6 +10,112 @@ import (
 type AMF0Msg map[int]interface{}
 type AMF0Object map[string]interface{}
 
+func (m *AMF0Msg) MarshalBinary() ([]byte, error) {
+	ret := []byte{}
+	mLen := len(*m)
+
+	// Walk through keys
+	for i := 0; i < mLen; i++ {
+		if v, ok := (*m)[i]; ok {
+			return nil, fmt.Errorf("rtmp: AMF0: AMF messages must have contiguous key indexs. %d does not exist.", i)
+		} else {
+			switch v := v.(type) {
+			case float64:
+				// 0x00
+			case bool:
+				// 0x01
+			case string:
+				// 0x02
+			case AMF0Object:
+				// 0x03
+			case nil:
+				// 0x05
+			default:
+				return nil, fmt.Errorf("rtmp: AMF0: AMF type not recognized: %d: %v", i, v)
+			}
+		}
+	}
+
+	return ret, nil
+}
+
+// UnmarshalBinary allows AMFMsg to adhere to the BinaryUnmarshaler interface.
+// It converts a byte stream into the fields of an AMF0MSg
+func (m *AMF0Msg) UnmarshalBinary(b []byte) error {
+	msgLen := len(b)
+	k := 0
+	i := 0
+	for i < msgLen {
+
+		// First byte determines type
+		switch b[i] {
+		case 0x00: // number
+			if (i + 9) > msgLen {
+				return errors.New("rtmp: AMF0: number marker found without enough bytes for number.")
+			}
+
+			if num, err := readAMF0Number(b[i+1 : i+9]); err != nil {
+				return err
+			} else {
+				(*m)[k] = *num
+				i = i + 8 + 1
+			}
+
+		case 0x01: // boolean
+			if (i + 1) > msgLen {
+				return errors.New("rtmp: AMF0: boolean marker found without enough bytes for boolean.")
+			}
+
+			(*m)[k] = (b[i+1] != 0x00) // boolean. 0x00 = false. everything else is true
+			i = i + 1 + 1
+
+		case 0x02: // string
+			if (i + 2) > msgLen {
+				return errors.New("rtmp: AMF0: string marker found without enough bytes for string size.")
+			}
+
+			strSz := binary.BigEndian.Uint16(b[i+1 : i+3])
+			if (i + 2 + int(strSz)) > msgLen {
+				return errors.New("rtmp: AMF0: string marker and size forund without enough bytes for string.")
+			}
+			str := string(b[i+3 : i+3+int(strSz)])
+			(*m)[k] = str
+			i = i + 2 + int(strSz) + 1
+
+		case 0x03: // object
+			if (i + 3) > msgLen {
+				return errors.New("rtmp: AMF0: object marker found without enough bytes for object.")
+			}
+
+			read, obj, err := readAMF0Object(b[i+1:]) // don't pass the object marker
+			if err != nil {
+				return err
+			}
+			(*m)[k] = obj
+			i = i + read + 1
+
+		case 0x05: // null marker
+			(*m)[k] = nil
+			i = i + 1
+
+		default:
+			return fmt.Errorf("rtmp: AMF0: unimplemented marker found: %v.", b[i])
+		}
+
+		k += 1
+	}
+
+	return nil
+}
+
+func (o *AMF0Object) MarshalBinary() ([]byte, error) {
+	return nil, nil
+}
+
+func (o *AMF0Object) UnmarshalBinary(b []byte) error {
+	return nil
+}
+
 func readAMF0Message(msg []byte) (AMF0Msg, error) {
 	msgLen := len(msg)
 	k := 0

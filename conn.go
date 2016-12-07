@@ -223,13 +223,37 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 		} else {
 			fmt.Printf("amf0: %v\n", *amf0)
 		}
-		c.writeAMF0NetConnectionConnectSuccess()
-		fmt.Println("Wrote amf0 back")
+		v, ok := (*amf0)[0]
+		if !ok {
+			fmt.Println("Tots bonkers message. ---")
+		} else {
+			switch v {
+			case "connect":
+				c.writeAMF0NetConnectionConnectSuccess()
+				fmt.Println("Wrote amf0 back")
+			case "FCPublish":
+				f := (*amf0)[1].(float64)
+				c.writeAMF0FCPublishSuccess(f)
+				fmt.Println("Wrote amf0 back")
+			case "releaseStream":
+				f := (*amf0)[1].(float64)
+				c.writeAMF0ReleaseStreamSuccess(f)
+				fmt.Println("Wrote amf0 back")
+			case "createStream":
+				f := (*amf0)[1].(float64)
+				c.writeAMF0CreateStreamSuccess(f)
+				fmt.Println("Wrote amf0 back")
+			case "publish":
+				f := (*amf0)[1].(float64)
+				c.writeAMF0CreateStreamSuccess(f)
+				fmt.Println("Wrote amf0 back")
+			}
+		}
 	default:
-		fmt.Printf("message: %v\n", message)
+		//fmt.Printf("message: %v\n", message)
 	}
-
-	return nil, fmt.Errorf("rtmp: recieve chunk not implemented")
+	return nil, nil
+	//return nil, fmt.Errorf("rtmp: recieve chunk not implemented")
 }
 
 func (c *conn) readType0MessageHeader() error {
@@ -515,6 +539,106 @@ func (c *conn) writeType3ChunkMessageHeader() error {
 	return nil
 }
 
+func (c *conn) writeAMF0PublishSuccess(tId float64) error {
+	msg := &AMF0Msg{
+		0: "_result",
+		1: tId,
+		2: AMF0Object{},
+		3: AMF0Object{
+			"level": "status",
+			"code":  "NetConnection.Connect.Success",
+		},
+	}
+	b, err := msg.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	if len(b) > 0xFFFFFF {
+		return errors.New("rtmp: AMF0 message too large.")
+	}
+
+	c.writeChunkBasicHeader(0, 2)
+	c.writeType0ChunkMessageHeader(0, uint32(len(b)), 20, 0, 2)
+	c.bufw.Write(b)
+	c.bufw.Flush()
+	return nil
+}
+
+func (c *conn) writeAMF0FCPublishSuccess(tId float64) error {
+	msg := &AMF0Msg{
+		0: "_result",
+		1: tId,
+		2: AMF0Object{},
+		3: AMF0Object{
+			"level": "status",
+			"code":  "NetConnection.Connect.Success",
+		},
+	}
+	b, err := msg.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	if len(b) > 0xFFFFFF {
+		return errors.New("rtmp: AMF0 message too large.")
+	}
+
+	c.writeChunkBasicHeader(0, 2)
+	c.writeType0ChunkMessageHeader(0, uint32(len(b)), 20, 0, 2)
+	c.bufw.Write(b)
+	c.bufw.Flush()
+	return nil
+}
+
+func (c *conn) writeAMF0CreateStreamSuccess(tId float64) error {
+	msg := &AMF0Msg{
+		0: "_result",
+		1: tId,
+		2: AMF0Object{},
+		3: AMF0Object{
+			"level": "status",
+			"code":  "NetConnection.Connect.Success",
+		},
+	}
+	b, err := msg.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	if len(b) > 0xFFFFFF {
+		return errors.New("rtmp: AMF0 message too large.")
+	}
+
+	c.writeChunkBasicHeader(0, 2)
+	c.writeType0ChunkMessageHeader(0, uint32(len(b)), 20, 0, 2)
+	c.bufw.Write(b)
+	c.bufw.Flush()
+	return nil
+}
+
+func (c *conn) writeAMF0ReleaseStreamSuccess(tId float64) error {
+	msg := &AMF0Msg{
+		0: "_result",
+		1: tId,
+		2: AMF0Object{},
+		3: AMF0Object{
+			"level": "status",
+			"code":  "NetConnection.Connect.Success",
+		},
+	}
+	b, err := msg.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	if len(b) > 0xFFFFFF {
+		return errors.New("rtmp: AMF0 message too large.")
+	}
+
+	c.writeChunkBasicHeader(0, 2)
+	c.writeType0ChunkMessageHeader(0, uint32(len(b)), 20, 0, 2)
+	c.bufw.Write(b)
+	c.bufw.Flush()
+	return nil
+}
+
 func (c *conn) writeAMF0NetConnectionConnectSuccess() error {
 	msg := &AMF0Msg{
 		0: "_result",
@@ -558,8 +682,8 @@ func (c *conn) serve(ctx context.Context) {
 	for {
 		if _, err := c.receiveChunk(ctx); err != nil {
 			//if i > 2 {
-			//c.rwc.Close()
-			//  break
+			c.rwc.Close()
+			break
 			//}
 			//i += 1
 		}

@@ -516,32 +516,26 @@ func (c *conn) writeType3ChunkMessageHeader() error {
 }
 
 func (c *conn) writeAMF0NetConnectionConnectSuccess() error {
+	msg := &AMF0Msg{
+		0: "_result",
+		1: 1.0,
+		2: AMF0Object{},
+		3: AMF0Object{
+			"level": "status",
+			"code":  "NetConnection.Connect.Success",
+		},
+	}
+	b, err := msg.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	if len(b) > 0xFFFFFF {
+		return errors.New("rtmp: AMF0 message too large.")
+	}
+
 	c.writeChunkBasicHeader(0, 2)
-	//c.writeType0ChunkMessageHeader(0, 81, 20, 0, 2)
-
-	//c.bufw.Write([]byte{2})
-	c.bufw.Write([]byte{0, 0, 0})    // empty timestamp
-	c.bufw.Write([]byte{0, 0, 81})   // message length
-	c.bufw.Write([]byte{20})         // AMF0 message!
-	c.bufw.Write([]byte{0, 0, 0, 0}) // control msg stream id
-
-	c.bufw.Write([]byte{2, 0, 7, 95, 114, 101, 115, 117, 108, 116})                           // string "_result"
-	c.bufw.Write([]byte{0, 63, 240, 0, 0, 0, 0, 0, 0})                                        // number: 1.0 i guess?
-	c.bufw.Write([]byte{3})                                                                   // object marker for properties
-	c.bufw.Write([]byte{0, 0, 9})                                                             // object end marker for properties
-	c.bufw.Write([]byte{3})                                                                   // object marker for information
-	c.bufw.Write([]byte{0, 5, 108, 101, 118, 101, 108, 2, 0, 6, 115, 116, 97, 116, 117, 115}) // level: "status" k/v
-	c.bufw.Write([]byte{
-		0, 4, 99, 111, 100,
-		101, 2, 0, 29, 78,
-		101, 116, 67, 111,
-		110, 110, 101, 99,
-		116, 105, 111, 110,
-		46, 67, 111, 110,
-		110, 101, 99, 116,
-		46, 83, 117, 99, 99,
-		101, 115, 115}) // "code: "NetConnection.Connect.Success"
-	c.bufw.Write([]byte{0, 0, 9}) // object end marker for information
+	c.writeType0ChunkMessageHeader(0, uint32(len(b)), 20, 0, 2)
+	c.bufw.Write(b)
 	c.bufw.Flush()
 	return nil
 }

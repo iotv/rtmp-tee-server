@@ -198,7 +198,7 @@ func (o *AMF0Object) MarshalBinary() ([]byte, error) {
 	}
 	ret = append(ret, 0x00, 0x00, 0x09) // Null key marker 0x00 0x00; End Object marker 0x09
 
-	return nil, nil
+	return ret, nil
 }
 
 // UnmarshalBinary allows AMF0Object to the BinaryUnmarshaler interface.

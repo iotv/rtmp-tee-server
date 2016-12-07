@@ -10,6 +10,9 @@ import (
 type AMF0Msg map[int]interface{}
 type AMF0Object map[string]interface{}
 
+// MarshalBinary allows AMF0Msg to adhere to the BinaryMarshaler interface.
+// It serializes the existing AMF0Msg to the Network Order byte slice expected
+// by AMF0 clients.
 func (m *AMF0Msg) MarshalBinary() ([]byte, error) {
 	ret := []byte{}
 	mLen := len(*m)
@@ -66,7 +69,8 @@ func (m *AMF0Msg) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary allows AMFMsg to adhere to the BinaryUnmarshaler interface.
-// It converts a byte stream into the fields of an AMF0MSg
+// It fills the fields of an existing AMF0Msg with values parsed from a
+// byte slice, b.
 func (m *AMF0Msg) UnmarshalBinary(b []byte) error {
 	k := 0
 	i := 0
@@ -134,6 +138,10 @@ func (m *AMF0Msg) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
+// MarshalBinary allows AMF0Object to adhere to the BinaryMarshaler interface.
+// It serializes the existing AMF0Object to the Network Order byte slice expected
+// by AMF0 clients. Typically this is function is called from an AMF0Msg
+// having MarshalBinary called on it.
 func (o *AMF0Object) MarshalBinary() ([]byte, error) {
 	ret := []byte{}
 
@@ -193,6 +201,9 @@ func (o *AMF0Object) MarshalBinary() ([]byte, error) {
 	return nil, nil
 }
 
+// UnmarshalBinary allows AMF0Object to the BinaryUnmarshaler interface.
+// It fills the fields of an existing AMF0Object with values parsed from a
+// byte slice, b.
 func (o *AMF0Object) UnmarshalBinary(b []byte) error {
 	i := 0
 

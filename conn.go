@@ -159,7 +159,10 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 	fmt.Println("-----")
 
 	// Chunk Basic Header
-	basicHeaderType, _ := c.bufr.Peek(1)
+	basicHeaderType, err := c.bufr.Peek(1)
+	if err != nil {
+		return nil, err
+	}
 	fmt.Printf("basicHeaderFirstByte: %v\n", basicHeaderType)
 	var basicHeaderLen int
 	switch basicHeaderType[0] &^ 0xC0 { // Remove fmt
@@ -175,7 +178,9 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 	bHPadding := make([]byte, 4-basicHeaderLen)
 
 	// Read basic header for the chunk
-	if bHLen, err := c.bufr.Read(basicHeader); bHLen != basicHeaderLen || err != nil {
+	if bHLen, err := c.bufr.Read(basicHeader); bHLen != basicHeaderLen {
+		return nil, fmt.Errorf("rtmp: read basic header failed: expected %d len header, got: %d", basicHeaderLen, bHLen)
+	} else if err != nil {
 		return nil, fmt.Errorf("rtmp: read chunk basic header failed: %s", err.Error())
 	}
 	chunkHeaderFormat := (basicHeader[0] & 0xC0) >> 6 // read fmt from first 2 bits and move them to LSBs
@@ -189,7 +194,6 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 	fmt.Printf("streamId: %v\n", streamId)
 
 	// Chunk Message header
-	var err error
 	switch chunkHeaderFormat {
 	case 0:
 		err = c.readType0MessageHeader()
@@ -260,7 +264,9 @@ func (c *conn) readType0MessageHeader() error {
 	now := time.Now()
 
 	header := make([]byte, 11)
-	if hLen, err := c.bufr.Read(header); hLen != 11 || err != nil {
+	if hLen, err := c.bufr.Read(header); hLen != 11 {
+		return fmt.Errorf("rtmp: read message header failed: expected 11 len header, got: %d", hLen)
+	} else if err != nil {
 		return fmt.Errorf("rtmp: read message header failed: %s", err.Error())
 	}
 

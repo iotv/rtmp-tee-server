@@ -217,10 +217,11 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 	switch *c.prvIncMsgTypId {
 	case 20: // AMF0 command message
 		// write a user result amf0
-		if amf0, err := readAMF0Message(message); err != nil {
+		amf0 := &AMF0Msg{}
+		if err := amf0.UnmarshalBinary(message); err != nil {
 			fmt.Printf("Error Reading AMF0 message: %s\n", err.Error())
 		} else {
-			fmt.Printf("amf0: %v\n", amf0)
+			fmt.Printf("amf0: %v\n", *amf0)
 		}
 		c.writeAMF0NetConnectionConnectSuccess()
 		fmt.Println("Wrote amf0 back")

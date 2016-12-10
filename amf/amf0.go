@@ -1,4 +1,4 @@
-package rtmp
+package amf
 
 import (
 	"encoding/binary"

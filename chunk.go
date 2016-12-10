@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/mg4tv/rtmp-go/amf"
 )
 
 func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
@@ -67,7 +69,7 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 	switch *c.prvIncMsgTypId {
 	case 20: // AMF0 command message
 		// write a user result amf0
-		amf0 := &AMF0Msg{}
+		amf0 := &amf.AMF0Msg{}
 		if err := amf0.UnmarshalBinary(message); err != nil {
 			return nil, err
 		}
@@ -386,11 +388,11 @@ func (c *conn) writeType3ChunkMessageHeader() error {
 }
 
 func (c *conn) writeAMF0PublishSuccess(tId float64) error {
-	msg := &AMF0Msg{
+	msg := &amf.AMF0Msg{
 		0: "_result",
 		1: tId,
-		2: AMF0Object{},
-		3: AMF0Object{
+		2: amf.AMF0Object{},
+		3: amf.AMF0Object{
 			"level": "status",
 			"code":  "NetConnection.Connect.Success",
 		},
@@ -411,11 +413,11 @@ func (c *conn) writeAMF0PublishSuccess(tId float64) error {
 }
 
 func (c *conn) writeAMF0FCPublishSuccess(tId float64) error {
-	msg := &AMF0Msg{
+	msg := &amf.AMF0Msg{
 		0: "_result",
 		1: tId,
-		2: AMF0Object{},
-		3: AMF0Object{
+		2: amf.AMF0Object{},
+		3: amf.AMF0Object{
 			"level": "status",
 			"code":  "NetConnection.Connect.Success",
 		},
@@ -436,11 +438,11 @@ func (c *conn) writeAMF0FCPublishSuccess(tId float64) error {
 }
 
 func (c *conn) writeAMF0CreateStreamSuccess(tId float64) error {
-	msg := &AMF0Msg{
+	msg := &amf.AMF0Msg{
 		0: "_result",
 		1: tId,
-		2: AMF0Object{},
-		3: AMF0Object{
+		2: amf.AMF0Object{},
+		3: amf.AMF0Object{
 			"level": "status",
 			"code":  "NetConnection.Connect.Success",
 		},
@@ -461,11 +463,11 @@ func (c *conn) writeAMF0CreateStreamSuccess(tId float64) error {
 }
 
 func (c *conn) writeAMF0ReleaseStreamSuccess(tId float64) error {
-	msg := &AMF0Msg{
+	msg := &amf.AMF0Msg{
 		0: "_result",
 		1: tId,
-		2: AMF0Object{},
-		3: AMF0Object{
+		2: amf.AMF0Object{},
+		3: amf.AMF0Object{
 			"level": "status",
 			"code":  "NetConnection.Connect.Success",
 		},
@@ -486,11 +488,11 @@ func (c *conn) writeAMF0ReleaseStreamSuccess(tId float64) error {
 }
 
 func (c *conn) writeAMF0NetConnectionConnectSuccess() error {
-	msg := &AMF0Msg{
+	msg := &amf.AMF0Msg{
 		0: "_result",
 		1: 1.0,
-		2: AMF0Object{},
-		3: AMF0Object{
+		2: amf.AMF0Object{},
+		3: amf.AMF0Object{
 			"level": "status",
 			"code":  "NetConnection.Connect.Success",
 		},

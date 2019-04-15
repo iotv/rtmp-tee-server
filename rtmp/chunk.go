@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mg4tv/rtmp-go/amf"
+	"github.com/iotv/rtmp-go/amf"
 )
 
 func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
@@ -59,7 +59,7 @@ func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
 		err = c.verifyType3MessageHeader()
 	}
 	if err != nil {
-		return nil, fmt.Errorf("rtmp: receive chunk failed: %s.", err.Error())
+		return nil, fmt.Errorf("rtmp: receive chunk failed: %s", err.Error())
 	}
 
 	// FIXME: do not allocate memory based on a network peer's demands. set a limit and obey it
@@ -126,17 +126,17 @@ func (c *conn) readType0MessageHeader() error {
 
 func (c *conn) readType1MessageHeader() error {
 	if c.prvIncMsgStrmId == nil {
-		return errors.New("rtmp: cannot read type 1 message header if no previous type 0 has been sent with stream id.")
+		return errors.New("rtmp: cannot read type 1 message header if no previous type 0 has been sent with stream id")
 	}
 	if c.prvIncMsgTs == nil {
-		return errors.New("rtmp: cannot read type 1 message header if no previous type 0, has been sent with message timestamp.")
+		return errors.New("rtmp: cannot read type 1 message header if no previous type 0, has been sent with message timestamp")
 	}
 
 	now := time.Now()
 
 	header := make([]byte, 7)
 	if hLen, err := c.bufr.Read(header); hLen != 7 {
-		return fmt.Errorf("rtmp: read message header failed.")
+		return fmt.Errorf("rtmp: read message header failed")
 	} else if err != nil {
 		return fmt.Errorf("rtmp: read message header failed: %s", err.Error())
 	}
@@ -159,16 +159,16 @@ func (c *conn) readType1MessageHeader() error {
 
 func (c *conn) readType2MessageHeader() error {
 	if c.prvIncMsgStrmId == nil {
-		return errors.New("rtmp: cannot read type 2 message header if no previous type 0 has been sent with stream id.")
+		return errors.New("rtmp: cannot read type 2 message header if no previous type 0 has been sent with stream id")
 	}
 	if c.prvIncMsgTs == nil {
-		return errors.New("rtmp: cannot read type 2 message header if no previous type 0, has been sent with message timestamp.")
+		return errors.New("rtmp: cannot read type 2 message header if no previous type 0, has been sent with message timestamp")
 	}
 	if c.prvIncMsgLen == nil {
-		return errors.New("rtmp: cannot read type 2 message header if no previous type 0,1 has been sent with message length.")
+		return errors.New("rtmp: cannot read type 2 message header if no previous type 0,1 has been sent with message length")
 	}
 	if c.prvIncMsgTypId == nil {
-		return errors.New("rtmp: cannot read type 2 message header if no previous type 0,1 has been sent with message type id.")
+		return errors.New("rtmp: cannot read type 2 message header if no previous type 0,1 has been sent with message type id")
 	}
 
 	now := time.Now()
@@ -193,19 +193,19 @@ func (c *conn) readType2MessageHeader() error {
 
 func (c *conn) verifyType3MessageHeader() error {
 	if c.prvIncMsgStrmId == nil {
-		return errors.New("rtmp: cannot read type 3 message header if no previous type 0 has been sent with stream id.")
+		return errors.New("rtmp: cannot read type 3 message header if no previous type 0 has been sent with stream id")
 	}
 	if c.prvIncMsgTs == nil {
-		return errors.New("rtmp: cannot read type 3 message header if no previous type 0, has been sent with message timestamp.")
+		return errors.New("rtmp: cannot read type 3 message header if no previous type 0, has been sent with message timestamp")
 	}
 	if c.prvIncMsgLen == nil {
-		return errors.New("rtmp: cannot read type 3 message header if no previous type 0,1 has been sent with message length.")
+		return errors.New("rtmp: cannot read type 3 message header if no previous type 0,1 has been sent with message length")
 	}
 	if c.prvIncMsgTypId == nil {
-		return errors.New("rtmp: cannot read type 3 message header if no previous type 0,1 has been sent with message type id.")
+		return errors.New("rtmp: cannot read type 3 message header if no previous type 0,1 has been sent with message type id")
 	}
 	if c.prvIncMsgTsD == nil {
-		return errors.New("rtmp: cannot read type 3 message header if no previous type 1,2 has been sent with message timestamp delta.")
+		return errors.New("rtmp: cannot read type 3 message header if no previous type 1,2 has been sent with message timestamp delta")
 	}
 
 	now := time.Now()
@@ -218,7 +218,7 @@ func (c *conn) verifyType3MessageHeader() error {
 	return nil
 }
 
-// FIXME: parameterize variables
+// FIXME: parametrize variables
 func (c *conn) writeWindowSizeAcknowledgementChunk() error {
 	// write a window size acknowledgement chunk
 	c.writeChunkBasicHeader(0, 2)
@@ -259,16 +259,16 @@ func (c *conn) writeRTMPStartStreamMessage() error {
 // and the following message format. A chunk basic header has a length based
 // on the chunk stream id.
 // In the RTMP spec the parameters map as follow:
-//    format => fmt (this is a libary used here)
+//    format => fmt (this is a library used here)
 //    chunkStreamId => cs id
 func (c *conn) writeChunkBasicHeader(format uint8, chunkStreamId uint32) error {
 	if format > 3 {
-		return errors.New("rtmp: failed to write chunk basic header: format larger than 2 bits.")
+		return errors.New("rtmp: failed to write chunk basic header: format larger than 2 bits")
 	}
 	if chunkStreamId > 65599 {
-		return errors.New("rtmp: failed to write chunk basic header: chunk stream id greater than max.")
+		return errors.New("rtmp: failed to write chunk basic header: chunk stream id greater than max")
 	} else if chunkStreamId < 2 {
-		return errors.New("rtmp: failed to write chunk basic header: chunk stream id less than min.")
+		return errors.New("rtmp: failed to write chunk basic header: chunk stream id less than min")
 	}
 
 	// Set fmt bits to first 2 bits of MSB
@@ -283,7 +283,7 @@ func (c *conn) writeChunkBasicHeader(format uint8, chunkStreamId uint32) error {
 	case 3:
 		fmtBits = 0xC0
 	default: // This shouldn't be reachable
-		return fmt.Errorf("rtmp: failed to write chunk basic header: invalid fmt: %d.", format)
+		return fmt.Errorf("rtmp: failed to write chunk basic header: invalid fmt: %d", format)
 	}
 
 	csBytes := make([]byte, 4)
@@ -303,7 +303,7 @@ func (c *conn) writeChunkBasicHeader(format uint8, chunkStreamId uint32) error {
 		csBytes[1] = (csBytes[1] &^ 0xC0) | fmtBits | 0x01 // clear bits then write fmtBits + 1 to signal 3 byte message
 		c.bufw.Write(csBytes[1:4])                         // write only the least significant 3 bytes
 	default: // This shouldn't be reachable
-		return fmt.Errorf("rtmp: failed to write chunk basic header: invalid id: %d.", chunkStreamId)
+		return fmt.Errorf("rtmp: failed to write chunk basic header: invalid id: %d", chunkStreamId)
 	}
 
 	return nil
@@ -320,7 +320,7 @@ func (c *conn) writeType0ChunkMessageHeader(ts uint, msgLen uint32, msgType uint
 	}
 
 	if msgLen > 0xFFFFFF { // Despite being 4 bytes, it must fit in 3
-		return fmt.Errorf("rtmp: failed to write type 0 chunk message header: message length too large: %d.", msgLen)
+		return fmt.Errorf("rtmp: failed to write type 0 chunk message header: message length too large: %d", msgLen)
 	}
 
 	// TODO: maybe DGAF about this?
@@ -329,14 +329,14 @@ func (c *conn) writeType0ChunkMessageHeader(ts uint, msgLen uint32, msgType uint
 	case 1, 2, 3, 4, 5, 6:
 		// RTMP Spec says message stream id must be 0 for stream control messages
 		if msgStrmId != 0 {
-			fmt.Errorf("rtmp: failed to write type 0 chunk message header: message stream id must be 0 but was: %d.", msgStrmId)
+			return fmt.Errorf("rtmp: failed to write type 0 chunk message header: message stream id must be 0 but was: %d", msgStrmId)
 		}
 
 		// RTMP Spec says chunk stream id must be 2 for stream control messages
 		// FIXME: it's a little late to catch this error... might need to fix where
 		// we check this or recover by finishing writing a blank message
 		if chunkStreamId != 2 {
-			fmt.Errorf("rtmp: failed to write type 0 chunk message header: chunk stream id must be 2 but was: %d.", chunkStreamId)
+			return fmt.Errorf("rtmp: failed to write type 0 chunk message header: chunk stream id must be 2 but was: %d", chunkStreamId)
 		}
 	case 8, 9, 15, 16, 17, 18, 19, 20, 22:
 		// we recognize this. ensure the chunk stream id isn't the control stream or weird
@@ -344,13 +344,13 @@ func (c *conn) writeType0ChunkMessageHeader(ts uint, msgLen uint32, msgType uint
 		// FIXME: it's a little late to catch this error... might need to fix where
 		// we check this or recover by finishing writing a blank message
 		if chunkStreamId < 2 {
-			fmt.Errorf("rtmp: failed to write type 0 chunk message header: Invalid chunk stream id: %d.", chunkStreamId)
+			return fmt.Errorf("rtmp: failed to write type 0 chunk message header: Invalid chunk stream id: %d", chunkStreamId)
 		} else if chunkStreamId == 2 { // 2 is reserved for types 1-6
-			fmt.Errorf("rtmp: failed to write type 0 chunk message header: chunk stream id 2 is reserved for protocol control.")
+			return fmt.Errorf("rtmp: failed to write type 0 chunk message header: chunk stream id 2 is reserved for protocol control")
 		}
 		// It all looks good. do nothing
 	default:
-		return fmt.Errorf("rtmp: failed to write type 0 chunk message header: msgType not recognized: %d.", msgType)
+		return fmt.Errorf("rtmp: failed to write type 0 chunk message header: msgType not recognized: %d", msgType)
 	}
 
 	// TODO: get some pooling going
@@ -402,7 +402,7 @@ func (c *conn) writeAMF0PublishSuccess(tId float64) error {
 		return err
 	}
 	if len(b) > 0xFFFFFF {
-		return errors.New("rtmp: AMF0 message too large.")
+		return errors.New("rtmp: AMF0 message too large")
 	}
 
 	c.writeChunkBasicHeader(0, 2)
@@ -427,7 +427,7 @@ func (c *conn) writeAMF0FCPublishSuccess(tId float64) error {
 		return err
 	}
 	if len(b) > 0xFFFFFF {
-		return errors.New("rtmp: AMF0 message too large.")
+		return errors.New("rtmp: AMF0 message too large")
 	}
 
 	c.writeChunkBasicHeader(0, 2)
@@ -452,7 +452,7 @@ func (c *conn) writeAMF0CreateStreamSuccess(tId float64) error {
 		return err
 	}
 	if len(b) > 0xFFFFFF {
-		return errors.New("rtmp: AMF0 message too large.")
+		return errors.New("rtmp: AMF0 message too large")
 	}
 
 	c.writeChunkBasicHeader(0, 2)
@@ -477,7 +477,7 @@ func (c *conn) writeAMF0ReleaseStreamSuccess(tId float64) error {
 		return err
 	}
 	if len(b) > 0xFFFFFF {
-		return errors.New("rtmp: AMF0 message too large.")
+		return errors.New("rtmp: AMF0 message too large")
 	}
 
 	c.writeChunkBasicHeader(0, 2)
@@ -502,7 +502,7 @@ func (c *conn) writeAMF0NetConnectionConnectSuccess() error {
 		return err
 	}
 	if len(b) > 0xFFFFFF {
-		return errors.New("rtmp: AMF0 message too large.")
+		return errors.New("rtmp: AMF0 message too large")
 	}
 
 	c.writeChunkBasicHeader(0, 2)

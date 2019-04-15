@@ -56,17 +56,17 @@ type conn struct {
 // S1 -> [timestamp: 4 bytes]    (epoch timestamp in milliseconds)
 //       [zeroes: 4 bytes]       (zeroes for padding)
 //       [random: 1528 bytes]    (random bytes)
-// <- C0 [version: 1 byte]       (only 3 is accepeted at this time)
+// <- C0 [version: 1 byte]       (only 3 is accepted at this time)
 // <- C1 [timestamp: 4 bytes]    (epoch timestamp in milliseconds)
 //       [zeroes: 4 bytes]       (zeroes for padding)
 //       [random: 1528]          (random bytes)
 // <Wait> The client and server packets must be in their own order, but their
-//        order is idependent so S1 may arrive before C1 is sent or vice versa
+//        order is independent so S1 may arrive before C1 is sent or vice versa
 // S2 -> [C1 timestamp: 4 bytes] (an echo of the timestamp sent in C1)
-//       [timestamp: 4 bytes]    (the epoch timestamp C1 recieved at)
+//       [timestamp: 4 bytes]    (the epoch timestamp C1 received at)
 //       [C1 random: 1528 bytes] (an echo of the random sent in C1)
 // <- C2 [S1 timestamp: 4 bytes] (an echo of the timestamp send in S1)
-//       [timestamp: 4 bytes]    (the epoch timestamp S1 recieved at)
+//       [timestamp: 4 bytes]    (the epoch timestamp S1 received at)
 //       [S1 random: 1528 bytes] (an echo of the random sent in S1)
 // <end> The order of S2 and C2 is also independent but must happen after the
 // exchange of C1 and S1. Note that the behavior is reflected, so once the
@@ -148,7 +148,7 @@ func (c *conn) handshake(ctx context.Context) error {
 
 	// Verify C2 acknowledged S1 Random block
 	if bytes.Compare(c2[8:], s1Random) != 0 {
-		return fmt.Errorf("rtmp: handshake C2 did not acknowledge S2 random.")
+		return fmt.Errorf("rtmp: handshake C2 did not acknowledge S2 random")
 	}
 
 	// handshake success

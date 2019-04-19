@@ -1,5 +1,7 @@
-module github.com/iotv/rtmp-tee-server
+module github.com/iotv/rtmp-tee-server/rtmp
+
+require github.com/iotv/rtmp-tee-server/amf v0.0.0
+
+replace github.com/iotv/rtmp-tee-server/amf => ./../amf
 
 go 1.12
-
-require github.com/iotv/rtmp-go v0.0.0-20161210212053-0a2439406e83

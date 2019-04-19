@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iotv/rtmp-go/amf"
+	"github.com/iotv/rtmp-tee-server/amf"
 )
 
 func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {

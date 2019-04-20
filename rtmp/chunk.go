@@ -5,55 +5,113 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/iotv/rtmp-tee-server/amf"
 )
 
-func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
-	// FIXME: set timeouts
-	// FIXME: use pools for byte slices
+type chunkHeaderType uint8
 
-	// Chunk Basic Header
+const (
+	type0 chunkHeaderType = iota
+	type1
+	type2
+	type3
+)
+
+type chunkBasicHeader struct {
+	ChunkMessageHeaderFormat chunkHeaderType
+	ChunkStreamId            uint32
+}
+
+func (c *conn) receiveChunkBasicHeader(ctx context.Context) (*chunkBasicHeader, error) {
+	// FIXME: debug log this
 	basicHeaderType, err := c.bufr.Peek(1)
 	if err != nil {
+		// FIXME
 		return nil, err
 	}
-	fmt.Printf("basicHeaderFirstByte: %v\n", basicHeaderType)
 	var basicHeaderLen int
-	switch basicHeaderType[0] &^ 0xC0 { // Remove fmt
-	case 0: // 2 byte streamId
+	// Apply a "bit clear" (AND NOT) to bit mask 0b11000000, removing the chunk format
+	switch basicHeaderType[0] &^ 0xC0 {
+	// 0bXX000000 indicates a 2 byte basic header
+	case 0x00:
 		basicHeaderLen = 2
-	case 1:
+	// 0bXX000001 indicates a 3 byte basic header
+	case 0x01:
 		basicHeaderLen = 3
+	// The default is a 1 byte header where 0b00111111 is the chunk stream id mask
 	default:
 		basicHeaderLen = 1
 	}
 
+	// FIXME: use a pool
 	basicHeader := make([]byte, basicHeaderLen)
-	bHPadding := make([]byte, 4-basicHeaderLen)
 
 	// Read basic header for the chunk
-	if bHLen, err := c.bufr.Read(basicHeader); bHLen != basicHeaderLen {
+	if bHLen, err := io.ReadFull(c.bufr, basicHeader); bHLen != basicHeaderLen {
 		return nil, fmt.Errorf("rtmp: read basic header failed: expected %d len header, got: %d", basicHeaderLen, bHLen)
 	} else if err != nil {
 		return nil, fmt.Errorf("rtmp: read chunk basic header failed: %s", err.Error())
 	}
-	chunkHeaderFormat := (basicHeader[0] & 0xC0) >> 6 // read fmt from first 2 bits and move them to LSBs
-	basicHeader[0] = basicHeader[0] &^ 0xC0           // remove fmt from first 2 bits
-	streamId := binary.BigEndian.Uint32(append(bHPadding, basicHeader...))
+
+	// read fmt from first 2 bits and move them from the most significant bits to the least significant bits
+	chunkHeaderFormat := (basicHeader[0] & 0xC0) >> 6
+
+	// get stream id as a uint32 by masking off unused bits and padding the front with 0's
+	basicHeader[0] = basicHeader[0] &^ 0xC0
+	var streamId uint32 = 0
 	switch basicHeaderLen {
-	case 2, 3:
-		streamId += 64 // 2 and 3 byte headers exclude IDs 2-63. It's ghetto. It's RTMP.
+	case 1:
+		streamId += uint32(basicHeader[0])
+	case 2:
+		// Chunk stream IDs 64-319 can be encoded in the 2-byte form of the
+		// header. ID is computed as (the second byte + 64).
+		streamId += uint32(basicHeader[1]) + 64
+	default: // 3
+		//  stream IDs 64-65599 can be encoded in the 3-byte version of
+		// this field. ID is computed as ((the third byte)*256 + (the second
+		// byte) + 64)
+		streamId += (uint32(basicHeader[2]) * 256) + 64
 	}
 
+	if basicHeaderLen == 2 || basicHeaderLen == 3 {
+		streamId += 64 // 2 and 3 byte headers exclude IDs 2-63. It's ghetto. It's RTMP.
+	}
+	return &chunkBasicHeader{
+			ChunkMessageHeaderFormat: chunkHeaderType(chunkHeaderFormat),
+			ChunkStreamId:            streamId,
+		},
+		nil
+}
+
+func (c *conn) receiveChunkMessageHeader(ctx context.Context) ([]byte, error) {
+	return nil, nil
+}
+
+func (c *conn) receiveChunkExtendedTimestamp(ctx context.Context) ([]byte, error) {
+	return nil, nil
+}
+
+func (c *conn) receiveChunkHeader(ctx context.Context) ([]byte, error) {
+	return nil, nil
+}
+
+func (c *conn) receiveChunkData(ctx context.Context) ([]byte, error) {
+	return nil, nil
+}
+
+func (c *conn) receiveChunk(ctx context.Context) ([]byte, error) {
+	basicHeader, err := c.receiveChunkBasicHeader(ctx)
+
 	// Chunk Message header
-	switch chunkHeaderFormat {
-	case 0:
+	switch basicHeader.ChunkMessageHeaderFormat {
+	case type0:
 		err = c.readType0MessageHeader()
-	case 1:
+	case type1:
 		err = c.readType1MessageHeader()
-	case 2:
+	case type2:
 		err = c.readType2MessageHeader()
 	default: // implied type 3 header
 		err = c.verifyType3MessageHeader()

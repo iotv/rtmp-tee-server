@@ -24,6 +24,9 @@ type conn struct {
 	bufr *bufio.Reader
 	bufw *bufio.Writer
 
+	// epoch 0 time
+	startTime *time.Time
+
 	// Stateful information about the previous incoming message
 	prvIncMsgTime   *time.Time // Actual time it came in
 	prvIncMsgTs     *uint32    // Timestamp on the message
@@ -40,7 +43,7 @@ type conn struct {
 	prvOutgMsgTypId  *uint8     // Message type ID
 	prvOutgMsgStrmId *uint32    // Message stream ID
 
-	// Stateful information about bytes recieved since acknowledgement
+	// Stateful information about bytes received since acknowledgement
 	sequenceNum   uint32
 	ackWindowSize uint32
 
@@ -70,6 +73,7 @@ func (c *conn) receiveHandshake(ctx context.Context) error {
 
 	// CO, C1
 	// Read c0
+	fmt.Println("Read c0, c1")
 	if c0, err := c.bufr.ReadByte(); c0 != 0x03 || err != nil {
 		return fmt.Errorf("rtmp: receiveHandshake C0 read version byte failed: %s", err.Error())
 	}
@@ -83,6 +87,7 @@ func (c *conn) receiveHandshake(ctx context.Context) error {
 
 	// S0, S1
 	// Write s0
+	fmt.Println("Write s0, s1")
 	if err := c.bufw.WriteByte(0x03); err != nil {
 		return fmt.Errorf("rtmp: receiveHandshake S0 write failed: %s", err.Error())
 	}
@@ -126,6 +131,7 @@ func (c *conn) receiveHandshake(ctx context.Context) error {
 	// if s2RandLen, err := c.bufw.Write(c1[8:]); s2RandLen != 1528 || err != nil {
 	//   return fmt.Errorf("rtmp: receiveHandshake S2 acknowledge client random write failed: %s", err.Error())
 	// }
+	fmt.Println("Write s2")
 	// FIXME: this is wrong. Obs likes it, but it's wrong.
 	if s2, err := c.bufw.Write(c1); s2 != 1536 || err != nil {
 		return fmt.Errorf("rtmp: receiveHandshake s2 write failed: %s", err.Error())
@@ -136,6 +142,7 @@ func (c *conn) receiveHandshake(ctx context.Context) error {
 	}
 
 	// C2
+	fmt.Println("Read c2")
 	c2 := make([]byte, 1536)
 	if c1Len, err := c.bufr.Read(c2); c1Len != 1536 || err != nil {
 		return fmt.Errorf("rtmp: receiveHandshake C2 read failed: %s", err.Error())

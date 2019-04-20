@@ -62,7 +62,6 @@ func ListenAndServe(addr string, handler Handler) error {
 	return server.ListenAndServe()
 }
 
-// ListenAndServe
 func (srv *Server) ListenAndServe() error {
 	addr := srv.Addr
 	if addr == "" {
@@ -80,7 +79,12 @@ func (srv *Server) ListenAndServe() error {
 var testHookServerServe func(*Server, net.Listener) // used if non-nil
 
 func (srv *Server) Serve(l net.Listener) error {
-	defer l.Close()
+	defer func() {
+		err := l.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
 	if fn := testHookServerServe; fn != nil {
 		fn(srv, l)
 	}
@@ -92,6 +96,7 @@ func (srv *Server) Serve(l net.Listener) error {
 	for {
 		rw, e := l.Accept()
 		if e != nil {
+			// FIXME: implement full jitter here
 			if ne, ok := e.(net.Error); ok && ne.Temporary() {
 				if tempDelay == 0 {
 					tempDelay = 5 * time.Millisecond
